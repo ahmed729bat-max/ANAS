@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ANAS System - المنصة الإبداعية المتكاملة</title>
+    
+    <!-- استدعاء مكتبات Firebase السحابية مع إعداداتك الجديدة -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { getFirestore, doc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+        import { getAnalytics } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-analytics.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyBkp0lXZ-Rmt0SzaWoECYDhG0uG7W9TMR0",
+            authDomain: "solo-system-3f3c2.firebaseapp.com",
+            projectId: "solo-system-3f3c2",
+            storageBucket: "solo-system-3f3c2.firebasestorage.app",
+            messagingSenderId: "415115475452",
+            appId: "1:415115475452:web:e3ea288869e2e393289a79",
+            measurementId: "G-28H08HYGBD"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const analytics = getAnalytics(app);
+
+        // بيانات أقسام Anas الثلاثة (بـ 4 مهام لكل قسم)
+        let stores = {
+            graphy: { xp: 0, level: 1, bank: 1000, cash: 500, tasks: [false, false, false, false] },
+            mix: { xp: 0, level: 1, bank: 1000, cash: 500, tasks: [false, false, false, false] },
+            cardecoration: { xp: 0, level: 1, bank: 1000, cash: 500, tasks: [false, false, false, false] }
+        };
+
+        function getRankName(totalMoney) {
+            if (totalMoney >= 1000000000) return "👑 مَلِك الثروة (الملياردير)";
+            if (totalMoney >= 100000000) return "💎 الأمير المالي";
+            if (totalMoney >= 10000000) return "🏰 النبيل الأرستقراطي";
+            if (totalMoney >= 1000000) return "🎩 السيد (Gentleman)";
+            if (totalMoney >= 100000) return "💼 التاجر المخضرم";
+            if (totalMoney >= 10000) return "📦 التاجر الصغير";
+            if (totalMoney >= 1000) return "🔨 العامل الكادح";
+            return "💀 المُعدم";
+        }
+
+        window.manualSave = async function() {
+            try {
+                await setDoc(doc(db, "users", "anas_platform_data"), stores);
+                let status = document.getElementById('save-status');
+                if(status) {
+                    status.innerText = "حالة النظام: متصل بالسحابة (Anas) ✓";
+                    status.style.color = "#10b981";
+                }
+            } catch (e) {
+                console.error("خطأ في الحفظ: ", e);
+                let status = document.getElementById('save-status');
+                if(status) status.innerText = "حالة النظام: خطأ في الاتصال";
+            }
+        };
+
+        async function loadData() {
+            try {
+                const docSnap = await getDoc(doc(db, "users", "anas_platform_data"));
+                if (docSnap.exists()) {
+                    let loadedData = docSnap.data();
+                    ['graphy', 'mix', 'cardecoration'].forEach(key => {
+                        if(loadedData[key]) {
+                            stores[key] = loadedData[key];
+                            if(!stores[key].tasks || stores[key].tasks.length !== 4) {
+                                stores[key].tasks = [false, false, false, false];
+                            }
+                        }
+                    });
+                } else {
+                    await manualSave();
+                }
+                updateAllUI();
+            } catch (e) {
+                console.error("خطأ في الجلب: ", e);
+            }
+        }
+
+        window.updateAllUI = function() {
+            ['graphy', 'mix', 'cardecoration'].forEach(key => {
+                let s = stores[key];
+                let total = s.bank + s.cash;
+
+                document.getElementById(`${key}-bank`).innerText = s.bank;
+                document.getElementById(`${key}-cash`).innerText = s.cash;
+                document.getElementById(`${key}-total`).innerText = total.toLocaleString();
+                document.getElementById(`${key}-xp`).innerText = s.xp;
+                document.getElementById(`${key}-level`).innerText = s.level;
+                document.getElementById(`${key}-bar`).style.width = Math.min(s.xp, 100) + '%';
+                document.getElementById(`${key}-rank`).innerText = getRankName(total);
+
+                s.tasks.forEach((done, i) => {
+                    let li = document.getElementById(`${key}_t_li_${i}`);
+                    let badge = document.getElementById(`${key}_t_${i}`);
+                    if(li && badge) {
+                        if(done) {
+                            badge.innerText = "✅";
+                            li.classList.add('task-done');
+                        } else {
+                            badge.innerText = "◻️";
+                            li.classList.remove('task-done');
+                        }
+                    }
+                });
+            });
+        }
+
+        window.toggleTask = function(storeKey, index) {
+            let s = stores[storeKey];
+            s.tasks[index] = !s.tasks[index];
+            let reward = 25; 
+            s.xp += s.tasks[index] ? reward : -reward;
+
+            if (s.xp >= 100) {
+                s.level++;
+                s.xp -= 100;
+                alert(`🚀 ترقية مستوى قسم ${storeKey.toUpperCase()} إلى Level ${s.level}!`);
+            }
+            if (s.xp < 0) s.xp = 0;
+
+            updateAllUI();
+            manualSave();
+        }
+
+        window.modifyMoney = function(storeKey, type) {
+            let amount = prompt(type === 'income' ? "أدخل مبلغ الدخل المضاف:" : "أدخل مبلغ المصروف المسحوب:");
+            if (amount !== null && amount.trim() !== "" && !isNaN(amount)) {
+                amount = parseFloat(amount);
+                let target = prompt("أين تم التعديل؟ اكتب (ب) للبنك أو (ك) للكاش:");
+                let s = stores[storeKey];
+                if (target === 'ب' || target === 'B' || target === 'ف') {
+                    if (type === 'income') s.bank += amount; else s.bank -= amount;
+                } else if (target === 'ك' || target === 'K' || target === 'c' || target === 'C') {
+                    if (type === 'income') s.cash += amount; else s.cash -= amount;
+                } else {
+                    alert("اختصار غير صحيح، استخدم (ب) أو (ك) فقط.");
+                    return;
+                }
+                updateAllUI();
+                manualSave();
+            }
+        }
+
+        window.resetStore = function(storeKey) {
+            if (confirm("هل تريد إعادة ضبط مهام هذا القسم؟")) {
+                stores[storeKey].tasks = stores[storeKey].tasks.map(() => false);
+                updateAllUI();
+                manualSave();
+            }
+        }
+
+        window.onload = function() {
+            loadData();
+        };
+    </script>
+
+    <style>
+        body {
+            background-color: #0b0f19;
+            color: #00f0ff;
+            font-family: 'Courier New', Courier, monospace;
+            padding: 15px;
+            margin: 0;
+        }
+        .main-container {
+            max-width: 700px;
+            margin: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 25px;
+        }
+        .platform-title {
+            text-align: center;
+            font-size: 22px;
+            color: #fff;
+            border-bottom: 2px dashed #00f0ff;
+            padding-bottom: 10px;
+        }
+        .store-box {
+            border: 2px solid;
+            background-color: #111827;
+            padding: 20px;
+            border-radius: 10px;
+        }
+        .graphy-box { border-color: #3b82f6; box-shadow: 0 0 15px rgba(59, 130, 246, 0.2); }
+        .mix-box { border-color: #8b5cf6; box-shadow: 0 0 15px rgba(139, 92, 246, 0.2); }
+        .cardecoration-box { border-color: #10b981; box-shadow: 0 0 15px rgba(16, 185, 129, 0.2); }
+
+        h2 {
+            font-size: 18px;
+            margin-top: 0;
+            border-bottom: 1px dashed rgba(255,255,255,0.2);
+            padding-bottom: 8px;
+            display: flex;
+            justify-content: space-between;
+        }
+        .top-status {
+            display: flex;
+            justify-content: space-between;
+            background: #1f2937;
+            padding: 10px;
+            border-radius: 6px;
+            font-size: 13px;
+            margin-bottom: 12px;
+        }
+        .progress-container {
+            background: #1f2937;
+            padding: 10px;
+            border-radius: 6px;
+            margin-bottom: 12px;
+            font-size: 13px;
+        }
+        .progress-bar {
+            background: #374151;
+            border-radius: 5px;
+            overflow: hidden;
+            height: 8px;
+            margin-top: 5px;
+        }
+        .progress-fill { height: 100%; width: 0%; transition: 0.3s; }
+        .graphy-box .progress-fill { background: #3b82f6; }
+        .mix-box .progress-fill { background: #8b5cf6; }
+        .cardecoration-box .progress-fill { background: #10b981; }
+
+        .money-box {
+            padding: 10px;
+            border-radius: 6px;
+            font-size: 13px;
+            margin-bottom: 12px;
+        }
+        .graphy-box .money-box { background: #1e3a8a33; border: 1px solid #3b82f6; color: #93c5fd; }
+        .mix-box .money-box { background: #4c1d9533; border: 1px solid #8b5cf6; color: #c4b5fd; }
+        .cardecoration-box .money-box { background: #064e3b33; border: 1px solid #10b981; color: #6ee7b7; }
+
+        .money-controls { display: flex; gap: 8px; margin-top: 8px; }
+        .money-controls button {
+            border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; font-weight: bold; font-family: inherit; color: #fff; font-size: 12px;
+        }
+        .graphy-box .money-controls button { background: #2563eb; }
+        .mix-box .money-controls button { background: #7c3aed; }
+        .cardecoration-box .money-controls button { background: #059669; }
+        .expense-btn { background: #ef4444 !important; }
+
+        .section-title {
+            font-size: 14px;
+            margin-top: 12px;
+            margin-bottom: 6px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .task-list { list-style: none; padding: 0; margin: 0; }
+        .task-list li {
+            background: #1f2937;
+            margin: 6px 0;
+            padding: 8px 10px;
+            border-radius: 6px;
+            font-size: 13px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+        }
+        .graphy-box .task-list li { border-right: 3px solid #3b82f6; }
+        .mix-box .task-list li { border-right: 3px solid #8b5cf6; }
+        .cardecoration-box .task-list li { border-right: 3px solid #10b981; }
+        .task-list li.task-done { border-right-color: #10b981 !important; background: #064e3b33; }
+        
+        .reset-btn {
+            background: #374151; color: #9ca3af; border: none; padding: 3px 8px; border-radius: 4px; cursor: pointer; font-size: 11px; font-family: inherit;
+        }
+        .global-bar {
+            text-align: center;
+            background: #1f2937;
+            padding: 10px;
+            border-radius: 8px;
+            font-size: 13px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="main-container">
+        <h1 class="platform-title">🎬 منصة ANAS الإبداعية المتكاملة 🚗</h1>
+        
+        <div class="global-bar">
+            <span id="save-status" style="color: #10b981;">حالة النظام: جاري الاتصال...</span>
+            <button onclick="manualSave()" style="background: #2563eb; color: #fff; border:none; padding: 6px 12px; border-radius:4px; cursor:pointer; font-family:inherit; font-weight:bold;">💾 حفظ يدوي</button>
+        </div>
+
+        <!-- 1. قسم ANAS GRAPHY -->
+        <div class="store-box graphy-box">
+            <h2>📸 ANAS GRAPHY <span style="font-size: 13px;">المستوى: <span id="graphy-level">1</span></span></h2>
+            <div class="top-status">
+                <span>اللقب المالي: <strong id="graphy-rank" style="color:#ef4444;">جاري التحديد</strong></span>
+            </div>
+            <div class="progress-container">
+                نقاط الخبرة (XP): <span id="graphy-xp">0</span> / 100
+                <div class="progress-bar"><div class="progress-fill" id="graphy-bar"></div></div>
+            </div>
+            <div class="money-box">
+                <strong>خزنة أرباح التصوير:</strong><br>
+                - البنك (ب): <span id="graphy-bank">1000</span> ريال | الكاش (ك): <span id="graphy-cash">500</span> ريال<br>
+                - الإجمالي: <strong id="graphy-total">1,500</strong> ريال
+                <div class="money-controls">
+                    <button onclick="modifyMoney('graphy', 'income')">+ إضافة دخل</button>
+                    <button class="expense-btn" onclick="modifyMoney('graphy', 'expense')">- تسجيل مصروف</button>
+                </div>
+            </div>
+            <div class="section-title">
+                <span>مهام قسم التصوير:</span>
+                <button class="reset-btn" onclick="resetStore('graphy')">إعادة ضبط</button>
+            </div>
+            <ul class="task-list">
+                <li onclick="toggleTask('graphy', 0)" id="graphy_t_li_0"><span>📢 1. تحديث إعلانات</span> <span id="graphy_t_0">◻️</span></li>
+                <li onclick="toggleTask('graphy', 1)" id="graphy_t_li_1"><span>📸 2. جلسة تصوير جديدة</span> <span id="graphy_t_1">◻️</span></li>
+                <li onclick="toggleTask('graphy', 2)" id="graphy_t_li_2"><span>🎬 3. مونتاج وعمل فيديو احترافي</span> <span id="graphy_t_2">◻️</span></li>
+                <li onclick="toggleTask('graphy', 3)" id="graphy_t_li_3"><span>🌐 4. تسليم العمل ورفع النتائج للموقع</span> <span id="graphy_t_3">◻️</span></li>
+            </ul>
+        </div>
+
+        <!-- 2. قسم ANAS MIX -->
+        <div class="store-box mix-box">
+            <h2>🎛️ ANAS MIX <span style="font-size: 13px;">المستوى: <span id="mix-level">1</span></span></h2>
+            <div class="top-status">
+                <span>اللقب المالي: <strong id="mix-rank" style="color:#ef4444;">جاري التحديد</strong></span>
+            </div>
+            <div class="progress-container">
+                نقاط الخبرة (XP): <span id="mix-xp">0</span> / 100
+                <div class="progress-bar"><div class="progress-fill" id="mix-bar"></div></div>
+            </div>
+            <div class="money-box">
+                <strong>خزنة أرباح المكس والإنتاج:</strong><br>
+                - البنك (ب): <span id="mix-bank">1000</span> ريال | الكاش (ك): <span id="mix-cash">500</span> ريال<br>
+                - الإجمالي: <strong id="mix-total">1,500</strong> ريال
+                <div class="money-controls">
+                    <button onclick="modifyMoney('mix', 'income')">+ إضافة دخل</button>
+                    <button class="expense-btn" onclick="modifyMoney('mix', 'expense')">- تسجيل مصروف</button>
+                </div>
+            </div>
+            <div class="section-title">
+                <span>مهام قسم المكس والإنتاج:</span>
+                <button class="reset-btn" onclick="resetStore('mix')">إعادة ضبط</button>
+            </div>
+            <ul class="task-list">
+                <li onclick="toggleTask('mix', 0)" id="mix_t_li_0"><span>📢 1. تحديث إعلانات الخدمة</span> <span id="mix_t_0">◻️</span></li>
+                <li onclick="toggleTask('mix', 1)" id="mix_t_li_1"><span>🎧 2. هندسة وهضم المادة الصوتية/الفيديو</span> <span id="mix_t_1">◻️</span></li>
+                <li onclick="toggleTask('mix', 2)" id="mix_t_li_2"><span>⚡ 3. اللمسات النهائية والتصدير</span> <span id="mix_t_2">◻️</span></li>
+                <li onclick="toggleTask('mix', 3)" id="mix_t_li_3"><span>📂 4. تسليم الملفات للعميل</span> <span id="mix_t_3">◻️</span></li>
+            </ul>
+        </div>
+
+        <!-- 3. قسم ANAS CAR DECORATION -->
+        <div class="store-box cardecoration-box">
+            <h2>🚗 ANAS CAR DECORATION <span style="font-size: 13px;">المستوى: <span id="cardecoration-level">1</span></span></h2>
+            <div class="top-status">
+                <span>اللقب المالي: <strong id="cardecoration-rank" style="color:#ef4444;">جاري التحديد</strong></span>
+            </div>
+            <div class="progress-container">
+                نقاط الخبرة (XP): <span id="cardecoration-xp">0</span> / 100
+                <div class="progress-bar"><div class="progress-fill" id="cardecoration-bar"></div></div>
+            </div>
+            <div class="money-box">
+                <strong>خزنة أرباح تزيين السيارات:</strong><br>
+                - البنك (ب): <span id="cardecoration-bank">1000</span> ريال | الكاش (ك): <span id="cardecoration-cash">500</span> ريال<br>
+                - الإجمالي: <strong id="cardecoration-total">1,500</strong> ريال
+                <div class="money-controls">
+                    <button onclick="modifyMoney('cardecoration', 'income')">+ إضافة دخل</button>
+                    <button class="expense-btn" onclick="modifyMoney('cardecoration', 'expense')">- تسجيل مصروف</button>
+                </div>
+            </div>
+            <div class="section-title">
+                <span>مهام قسم تزيين السيارات:</span>
+                <button class="reset-btn" onclick="resetStore('cardecoration')">إعادة ضبط</button>
+            </div>
+            <ul class="task-list">
+                <li onclick="toggleTask('cardecoration', 0)" id="cardecoration_t_li_0"><span>📢 1. تحديث إعلانات الديكور</span> <span id="cardecoration_t_0">◻️</span></li>
+                <li onclick="toggleTask('cardecoration', 1)" id="cardecoration_t_li_1"><span>🎨 2. تجهيز مواد وزينة السيارة</span> <span id="cardecoration_t_1">◻️</span></li>
+                <li onclick="toggleTask('cardecoration', 2)" id="cardecoration_t_li_2"><span>🛠️ 3. تنفيذ التزيين بإتقان</span> <span id="cardecoration_t_2">◻️</span></li>
+                <li onclick="toggleTask('cardecoration', 3)" id="cardecoration_t_li_3"><span>📸 4. توثيق النتيجة ورفعها</span> <span id="cardecoration_t_3">◻️</span></li>
+            </ul>
+        </div>
+
+    </div>
+
+</body>
+</html>
